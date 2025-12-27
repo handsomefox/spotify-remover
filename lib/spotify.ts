@@ -62,12 +62,17 @@ async function spotifyFetch<T>(
   return (await response.json()) as T;
 }
 
+type PagingResponse<TItem> = {
+  items: TItem[];
+  next: string | null;
+};
+
 async function fetchAllPages<T>(token: string, url: string): Promise<T[]> {
   let nextUrl: string | null = url;
   const items: T[] = [];
 
   while (nextUrl) {
-    const data = await spotifyFetch<{ items: T[]; next: string | null }>(
+    const data: PagingResponse<T> = await spotifyFetch<PagingResponse<T>>(
       token,
       nextUrl,
     );

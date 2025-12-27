@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Spotify Cleanup Tool
 
-## Getting Started
+Bulk-remove songs by selected artists from your Liked Songs and owned playlists, with a backup playlist created for every removal.
 
-First, run the development server:
+## Setup
+
+1. Create a Spotify app in the Spotify Developer Dashboard.
+2. Add a redirect URI: `http://localhost:3000/api/auth/callback/spotify`.
+3. Create `.env.local` with:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+SPOTIFY_ID=your_spotify_client_id
+SPOTIFY_SECRET=your_spotify_client_secret
+NEXTAUTH_SECRET=generate_a_random_secret
+NEXTAUTH_URL=http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Development
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+bun run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Build
 
-## Learn More
+```bash
+bun run build
+bun run start
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Notes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The app only edits playlists you own.
+- Liked Songs are treated separately via Spotify's library endpoints.
+- Every removal is archived in a new playlist named `Removed by Spotify Cleanup Tool — YYYY-MM-DD`.

@@ -2,6 +2,15 @@
 
 Bulk-remove songs by selected artists from your Liked Songs and owned playlists, with a backup playlist created for every removal.
 
+## Features
+
+- **Cleanup flow:** remove tracks by artist across Liked Songs + owned playlists with step-by-step review.
+- **Duplicate finder:** scan Liked Songs or a playlist for duplicates, review selections, and remove extras safely.
+- **Archive cleanup:** find playlists created by this tool and delete them in bulk.
+- **Safety first:** every removal is archived in a backup playlist before deletion.
+- **Progress + UX:** real scanning progress for duplicates, selectable removals, and clear results summaries.
+- **Modern UI:** dark mode with system detection plus an Auto/Light/Dark theme switcher.
+
 ## Setup
 
 1. Create a Spotify app in the Spotify Developer Dashboard.

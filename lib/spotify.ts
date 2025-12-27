@@ -221,6 +221,14 @@ export async function getAllLikedTracks(
     .filter((track): track is SpotifyTrack => Boolean(track));
 }
 
+export async function getLikedTrackTotal(token: string): Promise<number> {
+  const data = await spotifyFetch<{ total: number }>(
+    token,
+    `${SPOTIFY_API_BASE}/me/tracks?limit=1`,
+  );
+  return data.total;
+}
+
 export async function getPlaylistTrackTotal(
   token: string,
   playlistId: string,

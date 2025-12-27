@@ -17,12 +17,26 @@ type LibraryData = {
   playlists: { id: string; name: string; tracks: SpotifyTrack[] }[];
 };
 
+type LibraryMeta = {
+  user: { id: string; displayName: string };
+  playlists: { id: string; name: string; trackTotal: number }[];
+  likedTotal: number;
+};
+
 type ExecuteResult = {
   removedFromLiked: number;
   playlistsUpdated: number;
   removedTracks: number;
   archivePlaylist: { id: string; name: string } | null;
   failures?: { scope: "playlist" | "liked"; id?: string; message: string }[];
+};
+
+type ScanProgress = {
+  phase: "meta" | "tracks" | "done";
+  completedSources: number;
+  totalSources: number;
+  completedTracks: number;
+  totalTracks: number;
 };
 
 const steps = [
@@ -49,6 +63,7 @@ export default function Home() {
   const [selectedSources, setSelectedSources] = useState<
     Record<string, boolean>
   >({});
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
   const [executeState, setExecuteState] = useState<{
     loading: boolean;
     error: string | null;
@@ -62,6 +77,7 @@ export default function Home() {
       setTrackCandidates([]);
       setTrackSelection({});
       setSelectedSources({});
+      setScanProgress(null);
       setExecuteState({ loading: false, error: null, result: null });
     }
   }, [session, status]);
@@ -148,6 +164,61 @@ export default function Home() {
     return map;
   }, [libraryData]);
 
+  const scanPercent = useMemo(() => {
+    if (!scanProgress) {
+      return 0;
+    }
+    const total = scanProgress.totalTracks || scanProgress.totalSources;
+    if (!total) {
+      return 0;
+    }
+    const completed = scanProgress.totalTracks
+      ? scanProgress.completedTracks
+      : scanProgress.completedSources;
+    return Math.min(100, Math.round((completed / total) * 100));
+  }, [scanProgress]);
+
+  const updateProgress = (deltaSources: number, deltaTracks: number) => {
+    setScanProgress((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      return {
+        ...prev,
+        completedSources: Math.min(
+          prev.totalSources,
+          prev.completedSources + deltaSources,
+        ),
+        completedTracks: Math.min(
+          prev.totalTracks,
+          prev.completedTracks + deltaTracks,
+        ),
+      };
+    });
+  };
+
+  const mapWithConcurrency = async <T, R>(
+    items: T[],
+    limit: number,
+    mapper: (item: T, index: number) => Promise<R>,
+  ): Promise<R[]> => {
+    const results: R[] = new Array(items.length);
+    let cursor = 0;
+
+    const workers = Array.from({ length: Math.min(limit, items.length) }).map(
+      async () => {
+        while (cursor < items.length) {
+          const current = cursor;
+          cursor += 1;
+          results[current] = await mapper(items[current], current);
+        }
+      },
+    );
+
+    await Promise.all(workers);
+    return results;
+  };
+
   const artistList = useMemo(() => {
     const artistMap = new Map<
       string,
@@ -219,14 +290,96 @@ export default function Home() {
     setLibraryData(null);
     setStep(0);
     setExecuteState({ loading: false, error: null, result: null });
+    setScanProgress({
+      phase: "meta",
+      completedSources: 0,
+      totalSources: 0,
+      completedTracks: 0,
+      totalTracks: 0,
+    });
 
     try {
-      const response = await fetch("/api/spotify/summary");
-      if (!response.ok) {
-        throw new Error("Unable to load Spotify data.");
+      const metaResponse = await fetch("/api/spotify/library/meta");
+      if (!metaResponse.ok) {
+        throw new Error("Unable to load Spotify metadata.");
       }
-      const data = (await response.json()) as LibraryData;
-      setLibraryData(data);
+      const meta = (await metaResponse.json()) as LibraryMeta;
+
+      const totalSources =
+        meta.playlists.length + (meta.likedTotal > 0 ? 1 : 0);
+      const totalTracks =
+        meta.likedTotal +
+        meta.playlists.reduce((sum, playlist) => sum + playlist.trackTotal, 0);
+
+      setScanProgress({
+        phase: "tracks",
+        completedSources: 0,
+        totalSources,
+        completedTracks: 0,
+        totalTracks,
+      });
+
+      const likedPromise =
+        meta.likedTotal > 0
+          ? fetch("/api/spotify/liked")
+              .then(async (response) => {
+                if (!response.ok) {
+                  throw new Error("Unable to load liked songs.");
+                }
+                const data = (await response.json()) as {
+                  tracks: SpotifyTrack[];
+                };
+                updateProgress(1, data.tracks.length);
+                return data.tracks;
+              })
+              .catch((error) => {
+                console.error(error);
+                throw error;
+              })
+          : Promise.resolve([] as SpotifyTrack[]);
+
+      const playlistsPromise = mapWithConcurrency(
+        meta.playlists,
+        3,
+        async (playlist) => {
+          const response = await fetch(
+            `/api/spotify/playlists/${playlist.id}/tracks`,
+          );
+          if (!response.ok) {
+            throw new Error(`Unable to load ${playlist.name}.`);
+          }
+          const data = (await response.json()) as {
+            tracks: SpotifyTrack[];
+          };
+          updateProgress(1, data.tracks.length);
+          return {
+            id: playlist.id,
+            name: playlist.name,
+            tracks: data.tracks,
+          };
+        },
+      );
+
+      const [likedTracks, playlists] = await Promise.all([
+        likedPromise,
+        playlistsPromise,
+      ]);
+
+      setLibraryData({
+        user: meta.user,
+        likedTracks,
+        playlists,
+      });
+      setScanProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              phase: "done",
+              completedSources: prev.totalSources,
+              completedTracks: prev.totalTracks,
+            }
+          : prev,
+      );
       setStep(0);
       setSelectedArtistIds([]);
       setTrackCandidates([]);
@@ -235,6 +388,7 @@ export default function Home() {
     } catch (error) {
       console.error(error);
       setLibraryError("Unable to load your Spotify library. Try again.");
+      setScanProgress(null);
     } finally {
       setLoadingLibrary(false);
     }
@@ -422,6 +576,21 @@ export default function Home() {
                 >
                   {loadingLibrary ? "Loading..." : "Load my Spotify library"}
                 </button>
+                {loadingLibrary && scanProgress && (
+                  <div className="space-y-2">
+                    <div className="h-2 w-full rounded-full bg-emerald-100">
+                      <div
+                        className="h-2 rounded-full bg-emerald-600 transition-all"
+                        style={{ width: `${scanPercent}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {scanProgress.phase === "meta"
+                        ? "Preparing scan..."
+                        : `Scanning ${scanProgress.completedSources}/${scanProgress.totalSources} sources · ${scanProgress.completedTracks}/${scanProgress.totalTracks} tracks`}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

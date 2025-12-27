@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { toast } from "sonner";
 import type { SpotifyTrack } from "@/lib/spotify";
 
 type Source =
@@ -65,6 +66,32 @@ export default function Home() {
     }
   }, [session, status]);
 
+  useEffect(() => {
+    if (libraryError) {
+      toast.error(libraryError);
+    }
+  }, [libraryError]);
+
+  useEffect(() => {
+    if (executeState.error) {
+      toast.error(executeState.error);
+    }
+  }, [executeState.error]);
+
+  useEffect(() => {
+    if (session?.error) {
+      toast.error("Your Spotify session expired. Please sign in again.");
+    }
+  }, [session?.error]);
+
+  useEffect(() => {
+    if (executeState.result?.failures?.length) {
+      toast.warning(
+        `Some removals failed (${executeState.result.failures.length}). See details below.`,
+      );
+    }
+  }, [executeState.result?.failures?.length]);
+
   const tracksWithSources = useMemo(() => {
     if (!libraryData) {
       return [] as TrackWithSources[];
@@ -111,6 +138,14 @@ export default function Home() {
     });
 
     return Array.from(map.values());
+  }, [libraryData]);
+
+  const playlistNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    libraryData?.playlists.forEach((playlist) => {
+      map.set(playlist.id, playlist.name);
+    });
+    return map;
   }, [libraryData]);
 
   const artistList = useMemo(() => {
@@ -371,12 +406,6 @@ export default function Home() {
               </div>
             )}
 
-            {session && session.error && (
-              <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                Your Spotify session expired. Please sign in again to continue.
-              </div>
-            )}
-
             {session && !libraryData && (
               <div className="space-y-6">
                 <h2 className="text-2xl font-semibold">
@@ -393,9 +422,6 @@ export default function Home() {
                 >
                   {loadingLibrary ? "Loading..." : "Load my Spotify library"}
                 </button>
-                {libraryError && (
-                  <p className="text-sm text-rose-600">{libraryError}</p>
-                )}
               </div>
             )}
 
@@ -713,12 +739,6 @@ export default function Home() {
                           : "Confirm removal"}
                       </button>
                     </div>
-
-                    {executeState.error && (
-                      <p className="text-sm text-rose-600">
-                        {executeState.error}
-                      </p>
-                    )}
                   </div>
                 )}
 
@@ -746,8 +766,31 @@ export default function Home() {
                     {executeState.result.failures &&
                       executeState.result.failures.length > 0 && (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-                          Some removals did not complete. You can retry or check
-                          Spotify to confirm what moved.
+                          <p className="font-semibold">
+                            Some removals did not complete:
+                          </p>
+                          <ul className="mt-2 space-y-1 text-amber-800">
+                            {executeState.result.failures.map(
+                              (failure, index) => {
+                                const label =
+                                  failure.scope === "liked"
+                                    ? "Liked Songs"
+                                    : (playlistNameById.get(failure.id ?? "") ??
+                                      `Playlist ${failure.id ?? "unknown"}`);
+                                return (
+                                  <li
+                                    key={`${failure.scope}-${failure.id}-${index}`}
+                                  >
+                                    {label}: {failure.message}
+                                  </li>
+                                );
+                              },
+                            )}
+                          </ul>
+                          <p className="mt-2 text-xs text-amber-700">
+                            You can retry, or check Spotify to confirm what
+                            moved.
+                          </p>
                         </div>
                       )}
 

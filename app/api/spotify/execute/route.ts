@@ -4,7 +4,7 @@ import {
   addTracksToPlaylist,
   createArchivePlaylist,
   getCurrentUser,
-  getAllPlaylistTracks,
+  getPlaylistTrackTotal,
   removePlaylistTracks,
   removeSavedTracks,
 } from "@/lib/spotify";
@@ -30,8 +30,9 @@ const sleep = (ms: number) =>
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
+  const accessToken = session?.accessToken;
 
-  if (!session?.accessToken) {
+  if (!accessToken) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -50,32 +51,25 @@ export async function POST(request: Request) {
     let archivePlaylist = null as null | { id: string; name: string };
 
     if (removedTrackUris.length > 0) {
-      const user = await getCurrentUser(session.accessToken);
+      const user = await getCurrentUser(accessToken);
       const dateLabel = new Date().toISOString().slice(0, 10);
       const name = `Removed by Spotify Cleanup Tool — ${dateLabel}`;
-      archivePlaylist = await createArchivePlaylist(
-        session.accessToken,
-        user.id,
-        name,
-      );
+      archivePlaylist = await createArchivePlaylist(accessToken, user.id, name);
       await addTracksToPlaylist(
-        session.accessToken,
+        accessToken,
         archivePlaylist.id,
         removedTrackUris,
       );
 
-      const expectedIds = new Set(
-        removedTrackUris.map((uri) => uri.split(":").pop() as string),
-      );
+      const expectedCount = removedTrackUris.length;
 
       let verified = false;
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        const archiveTracks = await getAllPlaylistTracks(
-          session.accessToken,
+        const total = await getPlaylistTrackTotal(
+          accessToken,
           archivePlaylist.id,
         );
-        const archiveIds = new Set(archiveTracks.map((track) => track.id));
-        verified = Array.from(expectedIds).every((id) => archiveIds.has(id));
+        verified = total === expectedCount;
         if (verified) {
           break;
         }
@@ -101,7 +95,7 @@ export async function POST(request: Request) {
         continue;
       }
       try {
-        await removePlaylistTracks(session.accessToken, playlistId, uris);
+        await removePlaylistTracks(accessToken, playlistId, uris);
         playlistsUpdated += 1;
       } catch (error) {
         console.error(
@@ -118,7 +112,7 @@ export async function POST(request: Request) {
 
     if (likedTrackIds.length > 0) {
       try {
-        await removeSavedTracks(session.accessToken, likedTrackIds);
+        await removeSavedTracks(accessToken, likedTrackIds);
         likedRemoved = likedTrackIds.length;
       } catch (error) {
         console.error("Failed to remove liked songs", error);

@@ -28,38 +28,63 @@ const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+type FetchOptions = {
+  retries?: number;
+  backoffMs?: number;
+};
+
 async function spotifyFetch<T>(
   token: string,
   url: string,
   init?: RequestInit,
+  options: FetchOptions = {},
 ): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
+  const { retries = 3, backoffMs = 500 } = options;
+  let attempt = 0;
 
-  if (response.status === 429) {
-    const retryAfter = Number(response.headers.get("Retry-After") ?? "1");
-    await sleep(retryAfter * 1000);
-    return spotifyFetch<T>(token, url, init);
+  while (true) {
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    if (response.status === 429) {
+      if (attempt >= retries) {
+        const errorBody = await response.text();
+        throw new Error(
+          `Spotify API error (429): ${errorBody || "Rate limit exceeded."}`,
+        );
+      }
+      const retryAfter = Number(response.headers.get("Retry-After") ?? "0");
+      const delay = Math.max(retryAfter * 1000, backoffMs * 2 ** attempt);
+      await sleep(delay);
+      attempt += 1;
+      continue;
+    }
+
+    if (response.status >= 500 && response.status < 600 && attempt < retries) {
+      await sleep(backoffMs * 2 ** attempt);
+      attempt += 1;
+      continue;
+    }
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `Spotify API error (${response.status}): ${errorBody || response.statusText}`,
+      );
+    }
+
+    if (response.status === 204) {
+      return {} as T;
+    }
+
+    return (await response.json()) as T;
   }
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(
-      `Spotify API error (${response.status}): ${errorBody || response.statusText}`,
-    );
-  }
-
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return (await response.json()) as T;
 }
 
 type PagingResponse<TItem> = {
@@ -194,6 +219,17 @@ export async function getAllLikedTracks(
   return items
     .map((item) => mapTrack(item.track))
     .filter((track): track is SpotifyTrack => Boolean(track));
+}
+
+export async function getPlaylistTrackTotal(
+  token: string,
+  playlistId: string,
+): Promise<number> {
+  const data = await spotifyFetch<{ tracks: { total: number } }>(
+    token,
+    `${SPOTIFY_API_BASE}/playlists/${playlistId}?fields=tracks.total`,
+  );
+  return data.tracks.total;
 }
 
 export async function removeSavedTracks(

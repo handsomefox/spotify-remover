@@ -1,14 +1,15 @@
 import { getServerSession } from "next-auth";
+import type { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { getAllPlaylistTracks } from "@/lib/spotify";
 
 export const dynamic = "force-dynamic";
 
 type Context = {
-  params: { playlistId: string };
+  params: Promise<{ playlistId: string }>;
 };
 
-export async function GET(_: Request, context: Context) {
+export async function GET(_: NextRequest, context: Context) {
   const session = await getServerSession(authOptions);
   const accessToken = session?.accessToken;
 
@@ -16,7 +17,7 @@ export async function GET(_: Request, context: Context) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const playlistId = context.params.playlistId;
+  const { playlistId } = await context.params;
   if (!playlistId) {
     return Response.json({ error: "Missing playlist id." }, { status: 400 });
   }

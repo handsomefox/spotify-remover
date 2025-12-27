@@ -3,6 +3,12 @@ export type SpotifyArtist = {
   name: string;
 };
 
+export type SpotifyArtistImage = {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+};
+
 export type SpotifyTrack = {
   id: string;
   uri: string;
@@ -17,6 +23,17 @@ export type SpotifyTrack = {
 export type SpotifyPlaylist = {
   id: string;
   name: string;
+};
+
+export type SpotifyPlaylistSummary = {
+  id: string;
+  name: string;
+  trackTotal: number;
+};
+
+export type SpotifyPlaylistTrackItem = {
+  track: SpotifyTrack;
+  position: number;
 };
 
 export type SpotifyUser = {
@@ -83,13 +100,61 @@ async function spotifyFetch<T>(
       return {} as T;
     }
 
-    return (await response.json()) as T;
+    const text = await response.text();
+    if (!text) {
+      return {} as T;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      return JSON.parse(text) as T;
+    }
+
+    return text as T;
   }
 }
 
 type PagingResponse<TItem> = {
   items: TItem[];
   next: string | null;
+  offset?: number;
+};
+
+type SpotifyPlaylistTrackPage = {
+  items: {
+    track: {
+      id: string | null;
+      uri: string;
+      name: string;
+      artists: { id: string; name: string }[];
+      album: {
+        name: string;
+        images: { url: string; width: number | null; height: number | null }[];
+      };
+    } | null;
+    is_local: boolean;
+  }[];
+  next: string | null;
+  offset?: number;
+  total?: number;
+};
+
+type SpotifySavedTrackPage = {
+  items: {
+    track: {
+      id: string | null;
+      uri: string;
+      name: string;
+      artists: { id: string; name: string }[];
+      album: {
+        name: string;
+        images: { url: string; width: number | null; height: number | null }[];
+      };
+    };
+  }[];
+  next: string | null;
+  offset?: number;
+  total: number;
 };
 
 async function fetchAllPages<T>(token: string, url: string): Promise<T[]> {
@@ -107,6 +172,20 @@ async function fetchAllPages<T>(token: string, url: string): Promise<T[]> {
 
   return items;
 }
+
+const parseNextOffset = (next: string | null) => {
+  if (!next) {
+    return null;
+  }
+  try {
+    const url = new URL(next);
+    const offset = Number(url.searchParams.get("offset"));
+    return Number.isFinite(offset) ? offset : null;
+  } catch (error) {
+    console.error("Failed to parse next offset", error);
+    return null;
+  }
+};
 
 const mapTrack = (track: {
   id: string | null;
@@ -175,6 +254,30 @@ export async function getAllOwnedPlaylists(
     .map((playlist) => ({ id: playlist.id, name: playlist.name }));
 }
 
+export async function getArchivePlaylists(
+  token: string,
+  userId: string,
+): Promise<SpotifyPlaylistSummary[]> {
+  const archivePrefix = "Removed by Spotify Cleanup Tool";
+  const playlists = await fetchAllPages<{
+    id: string;
+    name: string;
+    owner: { id: string };
+    tracks: { total: number };
+  }>(token, `${SPOTIFY_API_BASE}/me/playlists?limit=50`);
+
+  return playlists
+    .filter(
+      (playlist) =>
+        playlist.owner.id === userId && playlist.name.startsWith(archivePrefix),
+    )
+    .map((playlist) => ({
+      id: playlist.id,
+      name: playlist.name,
+      trackTotal: playlist.tracks?.total ?? 0,
+    }));
+}
+
 export async function getAllPlaylistTracks(
   token: string,
   playlistId: string,
@@ -200,6 +303,77 @@ export async function getAllPlaylistTracks(
     .filter((track): track is SpotifyTrack => Boolean(track));
 }
 
+export async function getAllPlaylistTrackItems(
+  token: string,
+  playlistId: string,
+): Promise<SpotifyPlaylistTrackItem[]> {
+  let nextUrl: string | null =
+    `${SPOTIFY_API_BASE}/playlists/${playlistId}/tracks?limit=100`;
+  const items: SpotifyPlaylistTrackItem[] = [];
+
+  while (nextUrl) {
+    const data: SpotifyPlaylistTrackPage =
+      await spotifyFetch<SpotifyPlaylistTrackPage>(token, nextUrl);
+
+    const baseOffset = data.offset ?? items.length;
+    data.items.forEach((item, index) => {
+      if (!item.track) {
+        return;
+      }
+      const mapped = mapTrack(item.track);
+      if (!mapped) {
+        return;
+      }
+      items.push({
+        track: mapped,
+        position: baseOffset + index,
+      });
+    });
+    nextUrl = data.next;
+  }
+
+  return items;
+}
+
+export async function getPlaylistTrackItemsPage(
+  token: string,
+  playlistId: string,
+  offset = 0,
+  limit = 100,
+): Promise<{
+  items: SpotifyPlaylistTrackItem[];
+  total: number;
+  nextOffset: number | null;
+}> {
+  const data: SpotifyPlaylistTrackPage =
+    await spotifyFetch<SpotifyPlaylistTrackPage>(
+      token,
+      `${SPOTIFY_API_BASE}/playlists/${playlistId}/tracks?limit=${limit}&offset=${offset}`,
+    );
+
+  const baseOffset = data.offset ?? offset;
+  const items: SpotifyPlaylistTrackItem[] = [];
+  data.items.forEach((item, index) => {
+    if (!item.track) {
+      return;
+    }
+    const mapped = mapTrack(item.track);
+    if (!mapped) {
+      return;
+    }
+    items.push({
+      track: mapped,
+      position: baseOffset + index,
+    });
+  });
+
+  return {
+    items,
+    total: data.total ?? items.length,
+    nextOffset: parseNextOffset(data.next),
+  };
+}
+
 export async function getAllLikedTracks(
   token: string,
 ): Promise<SpotifyTrack[]> {
@@ -219,6 +393,29 @@ export async function getAllLikedTracks(
   return items
     .map((item) => mapTrack(item.track))
     .filter((track): track is SpotifyTrack => Boolean(track));
+}
+
+export async function getLikedTracksPage(
+  token: string,
+  offset = 0,
+  limit = 50,
+): Promise<{
+  items: SpotifyTrack[];
+  total: number;
+  nextOffset: number | null;
+}> {
+  const data: SpotifySavedTrackPage = await spotifyFetch<SpotifySavedTrackPage>(
+    token,
+    `${SPOTIFY_API_BASE}/me/tracks?limit=${limit}&offset=${offset}`,
+  );
+
+  return {
+    items: data.items
+      .map((item) => mapTrack(item.track))
+      .filter((track): track is SpotifyTrack => Boolean(track)),
+    total: data.total,
+    nextOffset: parseNextOffset(data.next),
+  };
 }
 
 export async function getLikedTrackTotal(token: string): Promise<number> {
@@ -275,6 +472,40 @@ export async function removePlaylistTracks(
   }
 }
 
+export async function deletePlaylist(
+  token: string,
+  playlistId: string,
+): Promise<void> {
+  await spotifyFetch<void>(
+    token,
+    `${SPOTIFY_API_BASE}/playlists/${playlistId}/followers`,
+    { method: "DELETE" },
+  );
+}
+
+export async function removePlaylistTrackPositions(
+  token: string,
+  playlistId: string,
+  removals: { uri: string; positions: number[] }[],
+): Promise<void> {
+  for (let i = 0; i < removals.length; i += 100) {
+    const chunk = removals.slice(i, i + 100);
+    await spotifyFetch<void>(
+      token,
+      `${SPOTIFY_API_BASE}/playlists/${playlistId}/tracks`,
+      {
+        method: "DELETE",
+        body: JSON.stringify({
+          tracks: chunk.map(({ uri, positions }) => ({
+            uri,
+            positions,
+          })),
+        }),
+      },
+    );
+  }
+}
+
 export async function createArchivePlaylist(
   token: string,
   userId: string,
@@ -312,4 +543,47 @@ export async function addTracksToPlaylist(
       },
     );
   }
+}
+
+export async function getArtistsByIds(
+  token: string,
+  artistIds: string[],
+): Promise<SpotifyArtistImage[]> {
+  const uniqueIds = Array.from(new Set(artistIds)).filter(Boolean);
+  const results: SpotifyArtistImage[] = [];
+
+  for (let i = 0; i < uniqueIds.length; i += 50) {
+    const chunk = uniqueIds.slice(i, i + 50);
+    const data = await spotifyFetch<{
+      artists: {
+        id: string;
+        name: string;
+        images: { url: string; width: number | null; height: number | null }[];
+      }[];
+    }>(token, `${SPOTIFY_API_BASE}/artists?ids=${chunk.join(",")}`);
+
+    data.artists.forEach((artist) => {
+      const images = artist.images ?? [];
+      const smallestImage =
+        images.length > 0
+          ? images.reduce((smallest, current) => {
+              if (!smallest) {
+                return current;
+              }
+              if (!current.height || !smallest.height) {
+                return smallest;
+              }
+              return current.height < smallest.height ? current : smallest;
+            }, images[0])
+          : null;
+
+      results.push({
+        id: artist.id,
+        name: artist.name,
+        imageUrl: smallestImage?.url ?? null,
+      });
+    });
+  }
+
+  return results;
 }

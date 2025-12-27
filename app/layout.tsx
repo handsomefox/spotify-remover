@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { Toaster } from "@/components/ui/sonner";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Sora } from "next/font/google";
 import Providers from "./providers";
 import "./globals.css";
 
-const geistSans = Geist({
+const geistSans = Sora({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -27,9 +28,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased font-sans`}
       >
         <Providers>{children}</Providers>
         <Toaster richColors closeButton />

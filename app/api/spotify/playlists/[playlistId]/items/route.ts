@@ -1,10 +1,18 @@
 import { getServerSession } from "next-auth";
+import type { NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
-import { getAllLikedTracks, getLikedTracksPage } from "@/lib/spotify";
+import {
+  getAllPlaylistTrackItems,
+  getPlaylistTrackItemsPage,
+} from "@/lib/spotify";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+type Context = {
+  params: Promise<{ playlistId: string }>;
+};
+
+export async function GET(request: NextRequest, context: Context) {
   const session = await getServerSession(authOptions);
   const accessToken = session?.accessToken;
 
@@ -12,7 +20,12 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
+  const { playlistId } = await context.params;
+  if (!playlistId) {
+    return Response.json({ error: "Missing playlist id." }, { status: 400 });
+  }
+
+  const { searchParams } = request.nextUrl;
   const offsetParam = searchParams.get("offset");
   const limitParam = searchParams.get("limit");
   const offset = offsetParam ? Number(offsetParam) : null;
@@ -21,20 +34,21 @@ export async function GET(request: Request) {
 
   try {
     if (usePaging) {
-      const page = await getLikedTracksPage(
+      const page = await getPlaylistTrackItemsPage(
         accessToken,
+        playlistId,
         Number.isFinite(offset) ? (offset as number) : 0,
-        Number.isFinite(limit) ? (limit as number) : 50,
+        Number.isFinite(limit) ? (limit as number) : 100,
       );
       return Response.json(page);
     }
 
-    const tracks = await getAllLikedTracks(accessToken);
-    return Response.json({ tracks });
+    const items = await getAllPlaylistTrackItems(accessToken, playlistId);
+    return Response.json({ items });
   } catch (error) {
-    console.error("Failed to load liked tracks", error);
+    console.error("Failed to load playlist items", error);
     return Response.json(
-      { error: "Failed to load liked tracks." },
+      { error: "Failed to load playlist items." },
       { status: 500 },
     );
   }

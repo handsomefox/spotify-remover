@@ -162,3 +162,12 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+input[type="checkbox"] {
+  accent-color: #059669;
+  background-color: #fff;
+}
+
+.dark input[type="checkbox"] {
+  background-color: #0f172a;
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { toast } from "sonner";
@@ -54,6 +55,9 @@ export default function Home() {
   const [step, setStep] = useState(0);
   const [selectedArtistIds, setSelectedArtistIds] = useState<string[]>([]);
   const [maxTrackCount, setMaxTrackCount] = useState<string>("");
+  const [artistImages, setArtistImages] = useState<
+    Record<string, string | null>
+  >({});
   const [trackCandidates, setTrackCandidates] = useState<TrackWithSources[]>(
     [],
   );
@@ -79,6 +83,7 @@ export default function Home() {
       setSelectedSources({});
       setScanProgress(null);
       setExecuteState({ loading: false, error: null, result: null });
+      setArtistImages({});
     }
   }, [session, status]);
 
@@ -163,6 +168,61 @@ export default function Home() {
     });
     return map;
   }, [libraryData]);
+
+  const artistIds = useMemo(() => {
+    const ids = new Set<string>();
+    tracksWithSources.forEach((track) => {
+      track.artists.forEach((artist) => {
+        if (artist.id) {
+          ids.add(artist.id);
+        }
+      });
+    });
+    return Array.from(ids);
+  }, [tracksWithSources]);
+
+  useEffect(() => {
+    if (!libraryData || artistIds.length === 0) {
+      return;
+    }
+
+    const missingIds = artistIds.filter((id) => !(id in artistImages));
+    if (missingIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadArtistImages = async () => {
+      try {
+        const response = await fetch("/api/spotify/artists", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: missingIds }),
+        });
+        if (!response.ok) {
+          throw new Error("Unable to load artist images.");
+        }
+        const data = (await response.json()) as {
+          images: Record<string, string | null>;
+        };
+        if (!cancelled) {
+          setArtistImages((prev) => ({ ...prev, ...data.images }));
+        }
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          toast.error("Unable to load artist images.");
+        }
+      }
+    };
+
+    loadArtistImages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [artistIds, artistImages, libraryData]);
 
   const scanPercent = useMemo(() => {
     if (!scanProgress) {
@@ -499,31 +559,44 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-amber-50 via-emerald-50 to-stone-100 text-slate-900">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-24 top-24 h-72 w-72 rounded-full bg-emerald-200/40 blur-3xl float-slow" />
-        <div className="absolute right-0 top-16 h-96 w-96 rounded-full bg-amber-200/50 blur-3xl glow-pulse" />
-        <div className="absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-lime-200/50 blur-3xl" />
-      </div>
-
+    <div className="relative min-h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-12">
         <header className="flex flex-wrap items-center justify-between gap-6">
           <div className="flex flex-col gap-2">
-            <p className="text-sm uppercase tracking-[0.3em] text-emerald-700">
+            <p className="text-base uppercase tracking-[0.3em] text-emerald-700 dark:text-emerald-300">
               Spotify Cleanup Tool
             </p>
+            <div className="flex flex-wrap items-center gap-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              <span className="text-emerald-700 dark:text-emerald-300">
+                Cleanup flow
+              </span>
+              <span className="text-slate-300 dark:text-slate-600">/</span>
+              <Link
+                className="hover:text-slate-700 dark:hover:text-slate-200"
+                href="/duplicates"
+              >
+                Duplicate finder
+              </Link>
+              <span className="text-slate-300 dark:text-slate-600">/</span>
+              <Link
+                className="hover:text-slate-700 dark:hover:text-slate-200"
+                href="/archives"
+              >
+                Archive cleanup
+              </Link>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-3 text-sm">
+          <div className="flex flex-wrap items-center justify-end gap-3 text-base">
             {session && (
-              <span className="text-slate-600">
+              <span className="text-slate-600 dark:text-slate-300">
                 Signed in as{" "}
-                <span className="font-semibold text-slate-900">
+                <span className="font-semibold text-slate-900 dark:text-slate-100">
                   {session.user?.name ?? "Spotify user"}
                 </span>
               </span>
             )}
             <button
-              className="rounded-full border border-emerald-400/60 px-4 py-2 text-emerald-800 transition hover:border-emerald-600 hover:text-emerald-900"
+              className="rounded-full border-2 border-emerald-500 px-4 py-2 text-base text-emerald-800 transition hover:border-emerald-600 hover:text-emerald-900 dark:border-emerald-300 dark:text-emerald-200 dark:hover:border-emerald-200 dark:hover:text-emerald-100"
               onClick={() => (session ? signOut() : signIn("spotify"))}
             >
               {session ? "Sign out" : "Sign in with Spotify"}
@@ -532,12 +605,12 @@ export default function Home() {
         </header>
 
         <main className="mt-12">
-          <section className="rounded-3xl border border-white/80 bg-white/80 p-8 shadow-xl shadow-emerald-100 backdrop-blur">
+          <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-950">
             {status === "loading" && (
               <div className="space-y-4">
-                <div className="h-6 w-40 animate-pulse rounded bg-emerald-100" />
-                <div className="h-4 w-full animate-pulse rounded bg-emerald-100" />
-                <div className="h-4 w-5/6 animate-pulse rounded bg-emerald-100" />
+                <div className="h-6 w-40 animate-pulse rounded bg-emerald-100 dark:bg-emerald-900/40" />
+                <div className="h-4 w-full animate-pulse rounded bg-emerald-100 dark:bg-emerald-900/40" />
+                <div className="h-4 w-5/6 animate-pulse rounded bg-emerald-100 dark:bg-emerald-900/40" />
               </div>
             )}
 
@@ -546,13 +619,13 @@ export default function Home() {
                 <h2 className="text-2xl font-semibold">
                   Connect Spotify to get started.
                 </h2>
-                <p className="text-slate-600">
+                <p className="text-slate-600 dark:text-slate-300">
                   We only request the permissions needed to read your library
                   and remove tracks. You can revoke access any time from your
                   Spotify settings.
                 </p>
                 <button
-                  className="rounded-full bg-emerald-600 px-6 py-3 text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700"
+                  className="rounded-full bg-emerald-600 px-6 py-3 text-white transition hover:bg-emerald-700 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
                   onClick={() => signIn("spotify")}
                 >
                   Sign in and scan my library
@@ -565,12 +638,12 @@ export default function Home() {
                 <h2 className="text-2xl font-semibold">
                   Ready to audit your playlists?
                 </h2>
-                <p className="text-slate-600">
+                <p className="text-slate-600 dark:text-slate-300">
                   We will load your liked songs and playlists you own. Nothing
                   will be removed until you confirm every step.
                 </p>
                 <button
-                  className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800"
+                  className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
                   onClick={loadLibrary}
                   disabled={loadingLibrary}
                 >
@@ -578,13 +651,13 @@ export default function Home() {
                 </button>
                 {loadingLibrary && scanProgress && (
                   <div className="space-y-2">
-                    <div className="h-2 w-full rounded-full bg-emerald-100">
+                    <div className="h-2 w-full rounded-full bg-emerald-100 dark:bg-emerald-950/60">
                       <div
-                        className="h-2 rounded-full bg-emerald-600 transition-all"
+                        className="h-2 rounded-full bg-emerald-600 transition-all dark:bg-emerald-400"
                         style={{ width: `${scanPercent}%` }}
                       />
                     </div>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
                       {scanProgress.phase === "meta"
                         ? "Preparing scan..."
                         : `Scanning ${scanProgress.completedSources}/${scanProgress.totalSources} sources · ${scanProgress.completedTracks}/${scanProgress.totalTracks} tracks`}
@@ -599,12 +672,12 @@ export default function Home() {
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <h2 className="text-2xl font-semibold">Cleanup flow</h2>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
                       {libraryData.likedTracks.length} liked tracks ·{" "}
                       {libraryData.playlists.length} owned playlists
                     </p>
                   </div>
-                  <div className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700">
+                  <div className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
                     Step {step + 1} of {steps.length}
                   </div>
                 </div>
@@ -615,8 +688,8 @@ export default function Home() {
                       key={label}
                       className={`rounded-2xl border px-4 py-3 text-sm font-medium ${
                         index === step
-                          ? "border-emerald-400 bg-emerald-50 text-emerald-800"
-                          : "border-slate-200 bg-white text-slate-500"
+                          ? "border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-400/60 dark:bg-emerald-500/10 dark:text-emerald-200"
+                          : "border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400"
                       }`}
                     >
                       {label}
@@ -631,13 +704,13 @@ export default function Home() {
                         <h3 className="text-xl font-semibold">
                           Select artists to remove
                         </h3>
-                        <p className="text-sm text-slate-500">
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
                           Artists are sorted by how many unique tracks appear
                           across your liked songs and playlists.
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-3">
-                        <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">
+                        <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
                           <span>Less than</span>
                           <input
                             type="number"
@@ -646,11 +719,11 @@ export default function Home() {
                             onChange={(event) =>
                               setMaxTrackCount(event.target.value)
                             }
-                            className="h-7 w-20 rounded-full border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60"
+                            className="h-7 w-20 rounded-full border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                             placeholder="X"
                           />
                           <button
-                            className="rounded-full border border-slate-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600 transition hover:border-slate-300"
+                            className="rounded-full border border-slate-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
                             onClick={() => {
                               const value = Number(maxTrackCount);
                               if (!Number.isFinite(value) || value <= 0) {
@@ -667,7 +740,7 @@ export default function Home() {
                           </button>
                         </div>
                         <button
-                          className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 transition hover:border-slate-300"
+                          className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
                           onClick={() =>
                             setSelectedArtistIds(
                               artistList.map((artist) => artist.id),
@@ -679,21 +752,35 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="max-h-[min(65vh,480px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white">
+                    <div className="max-h-[min(65vh,480px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
                       {artistList.length === 0 && (
-                        <div className="p-6 text-sm text-slate-500">
+                        <div className="p-6 text-sm text-slate-500 dark:text-slate-400">
                           No artists found yet. Try reloading your library.
                         </div>
                       )}
                       {artistList.map((artist) => (
                         <label
                           key={artist.id}
-                          className="flex min-w-0 cursor-pointer items-center justify-between gap-3 border-b border-slate-100 px-4 py-2 text-sm leading-6 last:border-none"
+                          className="flex min-w-0 cursor-pointer items-center justify-between gap-3 border-b border-slate-100 px-4 py-2 text-sm leading-6 last:border-none dark:border-slate-800"
                         >
-                          <span className="min-w-0 flex-1 truncate font-medium text-slate-800">
-                            {artist.name}
+                          <span className="flex min-w-0 flex-1 items-center gap-3">
+                            {artistImages[artist.id] ? (
+                              <img
+                                src={artistImages[artist.id] ?? ""}
+                                alt={`${artist.name} icon`}
+                                className="h-12 w-12 rounded-xl border border-slate-200 object-cover dark:border-slate-800"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400">
+                                {artist.name.slice(0, 2)}
+                              </span>
+                            )}
+                            <span className="min-w-0 truncate font-medium text-slate-800 dark:text-slate-100">
+                              {artist.name}
+                            </span>
                           </span>
-                          <span className="flex items-center gap-3 whitespace-nowrap text-slate-500">
+                          <span className="flex items-center gap-3 whitespace-nowrap text-slate-500 dark:text-slate-400">
                             {artist.count} tracks
                             <input
                               type="checkbox"
@@ -706,7 +793,7 @@ export default function Home() {
                                   return prev.filter((id) => id !== artist.id);
                                 });
                               }}
-                              className="h-4 w-4 rounded border-slate-300 bg-white text-emerald-600 accent-emerald-600"
+                              className="h-4 w-4 rounded border-slate-300 bg-white text-emerald-600 accent-emerald-600 dark:border-slate-600 dark:bg-slate-900"
                             />
                           </span>
                         </label>
@@ -715,14 +802,14 @@ export default function Home() {
 
                     <div className="flex flex-wrap gap-4">
                       <button
-                        className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800"
+                        className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
                         onClick={startTrackReview}
                         disabled={!hasSelection}
                       >
                         Review tracks
                       </button>
                       <button
-                        className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300"
+                        className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
                         onClick={loadLibrary}
                       >
                         Refresh library
@@ -736,13 +823,13 @@ export default function Home() {
                     <div className="flex items-center justify-between gap-4">
                       <div>
                         <h3 className="text-xl font-semibold">Review tracks</h3>
-                        <p className="text-sm text-slate-500">
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
                           Uncheck any songs you want to keep.
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
-                          className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600"
+                          className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300"
                           onClick={() => {
                             const updated: Record<string, boolean> = {};
                             trackCandidates.forEach((track) => {
@@ -754,7 +841,7 @@ export default function Home() {
                           Check all
                         </button>
                         <button
-                          className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600"
+                          className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300"
                           onClick={() => {
                             const updated: Record<string, boolean> = {};
                             trackCandidates.forEach((track) => {
@@ -768,16 +855,16 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="max-h-[min(66vh,540px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white">
+                    <div className="max-h-[min(66vh,540px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
                       {trackCandidates.length === 0 && (
-                        <div className="p-6 text-sm text-slate-500">
+                        <div className="p-6 text-sm text-slate-500 dark:text-slate-400">
                           No tracks found for the selected artists.
                         </div>
                       )}
                       {trackCandidates.map((track) => (
                         <label
                           key={track.id}
-                          className="flex cursor-pointer flex-col gap-2 border-b border-slate-100 px-6 py-4 text-base last:border-none"
+                          className="flex cursor-pointer flex-col gap-2 border-b border-slate-100 px-6 py-4 text-base last:border-none dark:border-slate-800"
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex items-start gap-4">
@@ -785,19 +872,19 @@ export default function Home() {
                                 <img
                                   src={track.album.imageUrl}
                                   alt={`${track.name} cover art`}
-                                  className="h-12 w-12 rounded-xl border border-slate-200 object-cover"
+                                  className="h-12 w-12 rounded-xl border border-slate-200 object-cover dark:border-slate-800"
                                   loading="lazy"
                                 />
                               ) : (
-                                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400">
                                   Cover
                                 </div>
                               )}
                               <div className="space-y-1">
-                                <p className="font-medium text-slate-900">
+                                <p className="font-medium text-slate-900 dark:text-slate-100">
                                   {track.name}
                                 </p>
-                                <p className="text-sm text-slate-500">
+                                <p className="text-sm text-slate-500 dark:text-slate-400">
                                   {track.artists
                                     .map((artist) => artist.name)
                                     .join(", ")}
@@ -821,7 +908,7 @@ export default function Home() {
                                   [track.id]: event.target.checked,
                                 }))
                               }
-                              className="mt-1 h-4 w-4 rounded border-slate-300 bg-white text-emerald-600 accent-emerald-600"
+                              className="mt-1 h-4 w-4 rounded border-slate-300 bg-white text-emerald-600 accent-emerald-600 dark:border-slate-600 dark:bg-slate-900"
                             />
                           </div>
                         </label>
@@ -830,13 +917,13 @@ export default function Home() {
 
                     <div className="flex flex-wrap gap-4">
                       <button
-                        className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300"
+                        className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
                         onClick={() => setStep(0)}
                       >
                         Back
                       </button>
                       <button
-                        className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800"
+                        className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
                         onClick={startPlaylistReview}
                         disabled={selectedTracks.length === 0}
                       >
@@ -852,7 +939,7 @@ export default function Home() {
                       <h3 className="text-xl font-semibold">
                         Choose which sources to modify
                       </h3>
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
                         Toggle off any playlist or your liked songs to keep it
                         untouched.
                       </p>
@@ -862,13 +949,13 @@ export default function Home() {
                       {playlistImpact.map((source) => (
                         <label
                           key={source.id}
-                          className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm"
+                          className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm dark:border-slate-800 dark:bg-slate-900/70"
                         >
                           <div>
-                            <p className="font-medium text-slate-900">
+                            <p className="font-medium text-slate-900 dark:text-slate-100">
                               {source.label}
                             </p>
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
                               {source.trackCount} tracks will be removed
                             </p>
                           </div>
@@ -881,7 +968,7 @@ export default function Home() {
                                 [source.id]: event.target.checked,
                               }))
                             }
-                            className="h-5 w-5 rounded border-slate-300 bg-white text-emerald-600 accent-emerald-600"
+                            className="h-5 w-5 rounded border-slate-300 bg-white text-emerald-600 accent-emerald-600 dark:border-slate-600 dark:bg-slate-900"
                           />
                         </label>
                       ))}
@@ -889,13 +976,13 @@ export default function Home() {
 
                     <div className="flex flex-wrap gap-4">
                       <button
-                        className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300"
+                        className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
                         onClick={() => setStep(1)}
                       >
                         Back
                       </button>
                       <button
-                        className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800"
+                        className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
                         onClick={executeCleanup}
                         disabled={
                           Object.values(selectedSources).every(
@@ -913,17 +1000,17 @@ export default function Home() {
 
                 {step === 3 && executeState.result && (
                   <div className="space-y-6">
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
-                      <h3 className="text-xl font-semibold text-emerald-900">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900/50 dark:bg-emerald-500/10">
+                      <h3 className="text-xl font-semibold text-emerald-900 dark:text-emerald-100">
                         Cleanup complete
                       </h3>
-                      <p className="mt-2 text-sm text-emerald-700">
+                      <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-200">
                         Removed {executeState.result.removedTracks} tracks from{" "}
                         {executeState.result.playlistsUpdated} playlists and{" "}
                         {executeState.result.removedFromLiked} liked songs.
                       </p>
                       {executeState.result.archivePlaylist && (
-                        <p className="mt-2 text-sm text-emerald-700">
+                        <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-200">
                           Backup playlist created:{" "}
                           <span className="font-semibold">
                             {executeState.result.archivePlaylist.name}
@@ -934,11 +1021,11 @@ export default function Home() {
                     </div>
                     {executeState.result.failures &&
                       executeState.result.failures.length > 0 && (
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-500/10 dark:text-amber-200">
                           <p className="font-semibold">
                             Some removals did not complete:
                           </p>
-                          <ul className="mt-2 space-y-1 text-amber-800">
+                          <ul className="mt-2 space-y-1 text-amber-800 dark:text-amber-200">
                             {executeState.result.failures.map(
                               (failure, index) => {
                                 const label =
@@ -956,7 +1043,7 @@ export default function Home() {
                               },
                             )}
                           </ul>
-                          <p className="mt-2 text-xs text-amber-700">
+                          <p className="mt-2 text-xs text-amber-700 dark:text-amber-200">
                             You can retry, or check Spotify to confirm what
                             moved.
                           </p>
@@ -965,7 +1052,7 @@ export default function Home() {
 
                     <div className="flex flex-wrap gap-4">
                       <button
-                        className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300"
+                        className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
                         onClick={loadLibrary}
                       >
                         Run another cleanup

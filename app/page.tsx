@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ChevronDownIcon, EyeIcon, EyeOffIcon, InfoIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { toast } from "sonner";
@@ -43,7 +44,7 @@ type ScanProgress = {
 const steps = [
   "Choose artists",
   "Review tracks",
-  "Confirm playlists",
+  "Review selections",
   "Execute cleanup",
 ];
 
@@ -54,7 +55,11 @@ export default function Home() {
   const [loadingLibrary, setLoadingLibrary] = useState(false);
   const [step, setStep] = useState(0);
   const [selectedArtistIds, setSelectedArtistIds] = useState<string[]>([]);
-  const [maxTrackCount, setMaxTrackCount] = useState<string>("");
+  const [showFeaturedOnlyArtists, setShowFeaturedOnlyArtists] = useState(true);
+  const [showFeaturedOnlyInfo, setShowFeaturedOnlyInfo] = useState(false);
+  const [artistSort, setArtistSort] = useState<
+    "count-desc" | "count-asc" | "name-asc" | "name-desc"
+  >("count-desc");
   const [artistImages, setArtistImages] = useState<
     Record<string, string | null>
   >({});
@@ -84,6 +89,9 @@ export default function Home() {
       setScanProgress(null);
       setExecuteState({ loading: false, error: null, result: null });
       setArtistImages({});
+      setShowFeaturedOnlyArtists(true);
+      setShowFeaturedOnlyInfo(false);
+      setArtistSort("count-desc");
     }
   }, [session, status]);
 
@@ -169,74 +177,36 @@ export default function Home() {
     return map;
   }, [libraryData]);
 
-  const artistIds = useMemo(() => {
-    const ids = new Set<string>();
+  const artistStats = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        trackIds: Set<string>;
+        primaryTrackIds: Set<string>;
+      }
+    >();
+
     tracksWithSources.forEach((track) => {
+      const primaryArtistId = track.artists[0]?.id ?? null;
       track.artists.forEach((artist) => {
-        if (artist.id) {
-          ids.add(artist.id);
+        const entry = map.get(artist.id) ?? {
+          id: artist.id,
+          name: artist.name,
+          trackIds: new Set<string>(),
+          primaryTrackIds: new Set<string>(),
+        };
+        entry.trackIds.add(track.id);
+        if (primaryArtistId && artist.id === primaryArtistId) {
+          entry.primaryTrackIds.add(track.id);
         }
+        map.set(artist.id, entry);
       });
     });
-    return Array.from(ids);
+
+    return map;
   }, [tracksWithSources]);
-
-  useEffect(() => {
-    if (!libraryData || artistIds.length === 0) {
-      return;
-    }
-
-    const missingIds = artistIds.filter((id) => !(id in artistImages));
-    if (missingIds.length === 0) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadArtistImages = async () => {
-      try {
-        const response = await fetch("/api/spotify/artists", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: missingIds }),
-        });
-        if (!response.ok) {
-          throw new Error("Unable to load artist images.");
-        }
-        const data = (await response.json()) as {
-          images: Record<string, string | null>;
-        };
-        if (!cancelled) {
-          setArtistImages((prev) => ({ ...prev, ...data.images }));
-        }
-      } catch (error) {
-        console.error(error);
-        if (!cancelled) {
-          toast.error("Unable to load artist images.");
-        }
-      }
-    };
-
-    loadArtistImages();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [artistIds, artistImages, libraryData]);
-
-  const scanPercent = useMemo(() => {
-    if (!scanProgress) {
-      return 0;
-    }
-    const total = scanProgress.totalTracks || scanProgress.totalSources;
-    if (!total) {
-      return 0;
-    }
-    const completed = scanProgress.totalTracks
-      ? scanProgress.completedTracks
-      : scanProgress.completedSources;
-    return Math.min(100, Math.round((completed / total) * 100));
-  }, [scanProgress]);
 
   const updateProgress = (deltaSources: number, deltaTracks: number) => {
     setScanProgress((prev) => {
@@ -280,31 +250,148 @@ export default function Home() {
   };
 
   const artistList = useMemo(() => {
-    const artistMap = new Map<
-      string,
-      { id: string; name: string; trackIds: Set<string> }
-    >();
+    const compare = (
+      a: { name: string; count: number },
+      b: { name: string; count: number },
+    ) => {
+      const isNameSort = artistSort.startsWith("name");
+      const direction = artistSort.endsWith("asc") ? 1 : -1;
+      if (isNameSort) {
+        const result = a.name.localeCompare(b.name);
+        if (result !== 0) {
+          return result * direction;
+        }
+      } else {
+        const result = a.count - b.count;
+        if (result !== 0) {
+          return result * direction;
+        }
+      }
+      return a.name.localeCompare(b.name);
+    };
 
-    tracksWithSources.forEach((track) => {
-      track.artists.forEach((artist) => {
-        const entry = artistMap.get(artist.id) ?? {
-          id: artist.id,
-          name: artist.name,
-          trackIds: new Set<string>(),
-        };
-        entry.trackIds.add(track.id);
-        artistMap.set(artist.id, entry);
-      });
-    });
-
-    return Array.from(artistMap.values())
+    return Array.from(artistStats.values())
+      .filter(
+        (artist) => showFeaturedOnlyArtists || artist.primaryTrackIds.size > 0,
+      )
       .map((artist) => ({
         id: artist.id,
         name: artist.name,
         count: artist.trackIds.size,
       }))
-      .sort((a, b) => b.count - a.count);
-  }, [tracksWithSources]);
+      .sort(compare);
+  }, [artistSort, artistStats, showFeaturedOnlyArtists]);
+
+  const visibleArtistCount = useMemo(() => artistList.length, [artistList]);
+
+  const artistIds = useMemo(
+    () => artistList.map((artist) => artist.id),
+    [artistList],
+  );
+
+  useEffect(() => {
+    if (showFeaturedOnlyArtists) {
+      return;
+    }
+    const visibleIds = new Set(artistIds);
+    setSelectedArtistIds((prev) => prev.filter((id) => visibleIds.has(id)));
+  }, [artistIds, showFeaturedOnlyArtists]);
+
+  const featuredOnlyArtists = useMemo(() => {
+    const compare = (
+      a: { name: string; count: number },
+      b: { name: string; count: number },
+    ) => {
+      const isNameSort = artistSort.startsWith("name");
+      const direction = artistSort.endsWith("asc") ? 1 : -1;
+      if (isNameSort) {
+        const result = a.name.localeCompare(b.name);
+        if (result !== 0) {
+          return result * direction;
+        }
+      } else {
+        const result = a.count - b.count;
+        if (result !== 0) {
+          return result * direction;
+        }
+      }
+      return a.name.localeCompare(b.name);
+    };
+
+    return Array.from(artistStats.values())
+      .filter((artist) => artist.primaryTrackIds.size === 0)
+      .map((artist) => ({
+        id: artist.id,
+        name: artist.name,
+        count: artist.trackIds.size,
+      }))
+      .sort(compare);
+  }, [artistSort, artistStats]);
+
+  const imageIds = useMemo(() => {
+    const ids = new Set(artistIds);
+    if (showFeaturedOnlyInfo) {
+      featuredOnlyArtists.forEach((artist) => ids.add(artist.id));
+    }
+    return Array.from(ids);
+  }, [artistIds, featuredOnlyArtists, showFeaturedOnlyInfo]);
+
+  useEffect(() => {
+    if (!libraryData || imageIds.length === 0) {
+      return;
+    }
+
+    const missingIds = imageIds.filter((id) => !(id in artistImages));
+    if (missingIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadArtistImages = async () => {
+      try {
+        const response = await fetch("/api/spotify/artists", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: missingIds }),
+        });
+        if (!response.ok) {
+          throw new Error("Unable to load artist images.");
+        }
+        const data = (await response.json()) as {
+          images: Record<string, string | null>;
+        };
+        if (!cancelled) {
+          setArtistImages((prev) => ({ ...prev, ...data.images }));
+        }
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          toast.error("Unable to load artist images.");
+        }
+      }
+    };
+
+    loadArtistImages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [artistImages, imageIds, libraryData]);
+
+  const scanPercent = useMemo(() => {
+    if (!scanProgress) {
+      return 0;
+    }
+    const total = scanProgress.totalTracks || scanProgress.totalSources;
+    if (!total) {
+      return 0;
+    }
+    const completed = scanProgress.totalTracks
+      ? scanProgress.completedTracks
+      : scanProgress.completedSources;
+    return Math.min(100, Math.round((completed / total) * 100));
+  }, [scanProgress]);
 
   const selectedTracks = useMemo(
     () => trackCandidates.filter((track) => trackSelection[track.id]),
@@ -674,7 +761,8 @@ export default function Home() {
                     <h2 className="text-2xl font-semibold">Cleanup flow</h2>
                     <p className="text-sm text-slate-500 dark:text-slate-400">
                       {libraryData.likedTracks.length} liked tracks ·{" "}
-                      {libraryData.playlists.length} owned playlists
+                      {libraryData.playlists.length} owned playlists ·{" "}
+                      {visibleArtistCount} artists
                     </p>
                   </div>
                   <div className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
@@ -710,35 +798,72 @@ export default function Home() {
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-3">
-                        <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
-                          <span>Less than</span>
-                          <input
-                            type="number"
-                            min={1}
-                            value={maxTrackCount}
-                            onChange={(event) =>
-                              setMaxTrackCount(event.target.value)
-                            }
-                            className="h-7 w-20 rounded-full border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                            placeholder="X"
-                          />
+                        <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm transition hover:shadow-md dark:border-slate-700 dark:bg-slate-900/70">
                           <button
-                            className="rounded-full border border-slate-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
-                            onClick={() => {
-                              const value = Number(maxTrackCount);
-                              if (!Number.isFinite(value) || value <= 0) {
-                                return;
-                              }
-                              setSelectedArtistIds(
-                                artistList
-                                  .filter((artist) => artist.count < value)
-                                  .map((artist) => artist.id),
-                              );
-                            }}
+                            type="button"
+                            onClick={() =>
+                              setShowFeaturedOnlyArtists((prev) => !prev)
+                            }
+                            className={`flex h-9 items-center gap-2 px-4 text-xs font-semibold uppercase tracking-[0.2em] transition ${
+                              showFeaturedOnlyArtists
+                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200"
+                                : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                            }`}
+                            aria-pressed={showFeaturedOnlyArtists}
                           >
-                            Select
+                            Feature-only artists
+                            <span
+                              className={`flex h-5 w-5 items-center justify-center rounded-full ${
+                                showFeaturedOnlyArtists
+                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100"
+                                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                              }`}
+                              aria-label={
+                                showFeaturedOnlyArtists
+                                  ? "Feature-only artists shown"
+                                  : "Feature-only artists hidden"
+                              }
+                            >
+                              {showFeaturedOnlyArtists ? (
+                                <EyeIcon className="h-3 w-3" />
+                              ) : (
+                                <EyeOffIcon className="h-3 w-3" />
+                              )}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowFeaturedOnlyInfo(true)}
+                            className="flex h-9 w-10 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                            aria-label="About feature-only artists"
+                          >
+                            <InfoIcon className="h-4 w-4" />
                           </button>
                         </div>
+                        <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
+                          <span>Sort</span>
+                          <div className="relative">
+                            <select
+                              value={artistSort}
+                              onChange={(event) =>
+                                setArtistSort(
+                                  event.target.value as typeof artistSort,
+                                )
+                              }
+                              className="h-7 appearance-none rounded-full border border-slate-200 bg-white py-1 pl-3 pr-8 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                            >
+                              <option value="count-desc">
+                                Count (high → low)
+                              </option>
+                              <option value="count-asc">
+                                Count (low → high)
+                              </option>
+                              <option value="name-asc">Name (A → Z)</option>
+                              <option value="name-desc">Name (Z → A)</option>
+                            </select>
+                            <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                          </div>
+                        </label>
                         <button
                           className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
                           onClick={() =>
@@ -748,6 +873,12 @@ export default function Home() {
                           }
                         >
                           Select all
+                        </button>
+                        <button
+                          className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
+                          onClick={() => setSelectedArtistIds([])}
+                        >
+                          Clear selection
                         </button>
                       </div>
                     </div>
@@ -800,34 +931,39 @@ export default function Home() {
                       ))}
                     </div>
 
-                    <div className="flex flex-wrap gap-4">
-                      <button
-                        className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
-                        onClick={startTrackReview}
-                        disabled={!hasSelection}
-                      >
-                        Review tracks
-                      </button>
-                      <button
-                        className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
-                        onClick={loadLibrary}
-                      >
-                        Refresh library
-                      </button>
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex flex-wrap gap-4">
+                        <button
+                          className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
+                          onClick={startTrackReview}
+                          disabled={!hasSelection}
+                        >
+                          Review tracks
+                        </button>
+                        <button
+                          className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
+                          onClick={loadLibrary}
+                        >
+                          Refresh library
+                        </button>
+                      </div>
+                      <span className="rounded-full bg-emerald-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
+                        {selectedArtistIds.length} selected
+                      </span>
                     </div>
                   </div>
                 )}
 
                 {step === 1 && (
                   <div className="space-y-6">
-                    <div className="flex items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
                       <div>
                         <h3 className="text-xl font-semibold">Review tracks</h3>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
                           Uncheck any songs you want to keep.
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 dark:border-slate-700 dark:text-slate-300"
                           onClick={() => {
@@ -850,7 +986,7 @@ export default function Home() {
                             setTrackSelection(updated);
                           }}
                         >
-                          Uncheck all
+                          Clear selection
                         </button>
                       </div>
                     </div>
@@ -915,37 +1051,108 @@ export default function Home() {
                       ))}
                     </div>
 
-                    <div className="flex flex-wrap gap-4">
-                      <button
-                        className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
-                        onClick={() => setStep(0)}
-                      >
-                        Back
-                      </button>
-                      <button
-                        className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
-                        onClick={startPlaylistReview}
-                        disabled={selectedTracks.length === 0}
-                      >
-                        Review playlists
-                      </button>
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex flex-wrap gap-4">
+                        <button
+                          className="rounded-full border border-slate-200 px-6 py-3 text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
+                          onClick={() => setStep(0)}
+                        >
+                          Back
+                        </button>
+                        <button
+                          className="rounded-full bg-slate-900 px-6 py-3 text-white transition hover:bg-slate-800 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
+                          onClick={startPlaylistReview}
+                          disabled={selectedTracks.length === 0}
+                        >
+                          Review selections
+                        </button>
+                      </div>
+                      <span className="rounded-full bg-emerald-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
+                        {selectedTracks.length} selected
+                      </span>
                     </div>
                   </div>
                 )}
 
                 {step === 2 && (
                   <div className="space-y-6">
-                    <div>
-                      <h3 className="text-xl font-semibold">
-                        Choose which sources to modify
-                      </h3>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
-                        Toggle off any playlist or your liked songs to keep it
-                        untouched.
-                      </p>
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <h3 className="text-xl font-semibold">
+                          Review selections
+                        </h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                          Confirm what will be removed and where.
+                        </p>
+                      </div>
                     </div>
 
                     <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
+                          Selected tracks
+                        </h4>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {selectedTracks.length} total
+                        </span>
+                      </div>
+                      <div className="max-h-[min(56vh,420px)] overflow-y-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
+                        {selectedTracks.length === 0 && (
+                          <div className="p-6 text-sm text-slate-500 dark:text-slate-400">
+                            No tracks selected. Go back to update your
+                            selection.
+                          </div>
+                        )}
+                        {selectedTracks.map((track) => (
+                          <div
+                            key={track.id}
+                            className="flex items-start gap-4 border-b border-slate-100 px-6 py-4 text-sm last:border-none dark:border-slate-800"
+                          >
+                            {track.album.imageUrl ? (
+                              <img
+                                src={track.album.imageUrl}
+                                alt={`${track.name} cover art`}
+                                className="h-12 w-12 rounded-xl border border-slate-200 object-cover dark:border-slate-800"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400">
+                                Cover
+                              </div>
+                            )}
+                            <div className="min-w-0 space-y-1">
+                              <p className="truncate font-medium text-slate-900 dark:text-slate-100">
+                                {track.name}
+                              </p>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                {track.artists
+                                  .map((artist) => artist.name)
+                                  .join(", ")}
+                                {" · "}
+                                {track.sources
+                                  .map((source) =>
+                                    source.type === "liked"
+                                      ? "Liked Songs"
+                                      : source.playlistName,
+                                  )
+                                  .join(", ")}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
+                          Choose sources to modify
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Toggle off any playlist or your liked songs to keep it
+                          untouched.
+                        </p>
+                      </div>
                       {playlistImpact.map((source) => (
                         <label
                           key={source.id}
@@ -1065,6 +1272,79 @@ export default function Home() {
           </section>
         </main>
       </div>
+
+      {showFeaturedOnlyInfo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-6 py-10 backdrop-blur-sm"
+          onClick={() => setShowFeaturedOnlyInfo(false)}
+        >
+          <div
+            className="w-full max-w-2xl space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-950"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+                  Feature-only artists
+                </h3>
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  These artists only appear as a feature on tracks in your
+                  library. Toggle the filter to include or hide them from the
+                  main picker.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 transition hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600"
+                onClick={() => setShowFeaturedOnlyInfo(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                <span>{featuredOnlyArtists.length} artists</span>
+                <span>Tracks</span>
+              </div>
+              <div className="max-h-[50vh] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                {featuredOnlyArtists.length === 0 && (
+                  <div className="p-6 text-sm text-slate-500 dark:text-slate-400">
+                    No feature-only artists found.
+                  </div>
+                )}
+                {featuredOnlyArtists.map((artist) => (
+                  <div
+                    key={artist.id}
+                    className="flex items-center justify-between border-b border-slate-100 px-4 py-3 text-sm last:border-none dark:border-slate-800"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      {artistImages[artist.id] ? (
+                        <img
+                          src={artistImages[artist.id] ?? ""}
+                          alt={`${artist.name} icon`}
+                          className="h-10 w-10 rounded-xl border border-slate-200 object-cover dark:border-slate-800"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-400">
+                          {artist.name.slice(0, 2)}
+                        </span>
+                      )}
+                      <span className="truncate font-medium text-slate-900 dark:text-slate-100">
+                        {artist.name}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {artist.count} tracks
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

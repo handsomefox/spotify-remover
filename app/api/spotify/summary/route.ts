@@ -11,23 +11,24 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
+  const accessToken = session?.accessToken;
 
-  if (!session?.accessToken) {
+  if (!accessToken) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const user = await getCurrentUser(session.accessToken);
-    const playlists = await getAllOwnedPlaylists(session.accessToken, user.id);
+    const user = await getCurrentUser(accessToken);
+    const playlists = await getAllOwnedPlaylists(accessToken, user.id);
 
     const playlistData = await Promise.all(
       playlists.map(async (playlist) => ({
         ...playlist,
-        tracks: await getAllPlaylistTracks(session.accessToken, playlist.id),
-      })),
+        tracks: await getAllPlaylistTracks(accessToken, playlist.id),
+      }))
     );
 
-    const likedTracks = await getAllLikedTracks(session.accessToken);
+    const likedTracks = await getAllLikedTracks(accessToken);
 
     return Response.json({
       user: {
@@ -41,7 +42,7 @@ export async function GET() {
     console.error("Failed to load Spotify summary", error);
     return Response.json(
       { error: "Failed to load Spotify data." },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

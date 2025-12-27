@@ -646,7 +646,7 @@ export default function Home() {
                             onChange={(event) =>
                               setMaxTrackCount(event.target.value)
                             }
-                            className="h-7 w-20 rounded-full border border-slate-200 px-2 text-xs font-semibold text-slate-700"
+                            className="h-7 w-20 rounded-full border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60"
                             placeholder="X"
                           />
                           <button
@@ -706,7 +706,7 @@ export default function Home() {
                                   return prev.filter((id) => id !== artist.id);
                                 });
                               }}
-                              className="h-4 w-4 rounded border-slate-300 text-emerald-600"
+                              className="h-4 w-4 rounded border-slate-300 bg-white text-emerald-600 accent-emerald-600"
                             />
                           </span>
                         </label>
@@ -821,7 +821,7 @@ export default function Home() {
                                   [track.id]: event.target.checked,
                                 }))
                               }
-                              className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600"
+                              className="mt-1 h-4 w-4 rounded border-slate-300 bg-white text-emerald-600 accent-emerald-600"
                             />
                           </div>
                         </label>
@@ -881,7 +881,7 @@ export default function Home() {
                                 [source.id]: event.target.checked,
                               }))
                             }
-                            className="h-5 w-5 rounded border-slate-300 text-emerald-600"
+                            className="h-5 w-5 rounded border-slate-300 bg-white text-emerald-600 accent-emerald-600"
                           />
                         </label>
                       ))}

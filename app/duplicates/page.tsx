@@ -44,10 +44,10 @@ const steps = [
 
 const normalize = (value: string) =>
   value
-    .toLowerCase()
+    .toLocaleLowerCase()
     .replace(/\s*\(.*?\)\s*/g, " ")
     .replace(/\s*\[.*?\]\s*/g, " ")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 
 const buildPotentialKey = (track: SpotifyTrack) => {
@@ -103,7 +103,7 @@ export default function DuplicatesPage() {
   useEffect(() => {
     if (executeState.result?.failures?.length) {
       toast.warning(
-        `Some removals failed (${executeState.result.failures.length}). See details below.`,
+        `Some removals failed (${executeState.result.failures.length}). See details below.`
       );
     }
   }, [executeState.result?.failures?.length]);
@@ -126,7 +126,7 @@ export default function DuplicatesPage() {
   const selectedPlaylistName = useMemo(() => {
     return (
       libraryMeta?.playlists.find(
-        (playlist) => playlist.id === selectedPlaylistId,
+        (playlist) => playlist.id === selectedPlaylistId
       )?.name ?? ""
     );
   }, [libraryMeta, selectedPlaylistId]);
@@ -150,14 +150,14 @@ export default function DuplicatesPage() {
     }
     return Math.min(
       100,
-      Math.round((scanProgress.loaded / scanProgress.total) * 100),
+      Math.round((scanProgress.loaded / scanProgress.total) * 100)
     );
   }, [scanProgress]);
 
   const duplicatesSummary = useMemo(() => {
     const totalItems = duplicateGroups.reduce(
       (sum, group) => sum + group.items.length,
-      0,
+      0
     );
     return {
       groups: duplicateGroups.length,
@@ -178,7 +178,7 @@ export default function DuplicatesPage() {
   }, [duplicateGroups, selection]);
 
   const buildGroupsFromPlaylist = (
-    items: SpotifyPlaylistTrackItem[],
+    items: SpotifyPlaylistTrackItem[]
   ): { groups: DuplicateGroup[]; defaults: Record<string, boolean> } => {
     const occurrences = new Map<string, DuplicateItem[]>();
 
@@ -202,7 +202,7 @@ export default function DuplicatesPage() {
       }
       duplicatedIds.add(trackId);
       const sorted = [...itemsForTrack].sort(
-        (a, b) => (a.position ?? 0) - (b.position ?? 0),
+        (a, b) => (a.position ?? 0) - (b.position ?? 0)
       );
       sorted.forEach((item, index) => {
         defaults[item.key] = index > 0;
@@ -262,7 +262,7 @@ export default function DuplicatesPage() {
   };
 
   const buildGroupsFromLiked = (
-    tracks: SpotifyTrack[],
+    tracks: SpotifyTrack[]
   ): { groups: DuplicateGroup[]; defaults: Record<string, boolean> } => {
     const potentialMap = new Map<string, DuplicateItem[]>();
     const defaults: Record<string, boolean> = {};
@@ -342,7 +342,7 @@ export default function DuplicatesPage() {
 
         while (true) {
           const response = await fetch(
-            `/api/spotify/liked?offset=${offset}&limit=${limit}`,
+            `/api/spotify/liked?offset=${offset}&limit=${limit}`
           );
           if (!response.ok) {
             throw new Error("Unable to load liked songs.");
@@ -375,7 +375,7 @@ export default function DuplicatesPage() {
 
         while (true) {
           const response = await fetch(
-            `/api/spotify/playlists/${selectedPlaylistId}/items?offset=${offset}&limit=${limit}`,
+            `/api/spotify/playlists/${selectedPlaylistId}/items?offset=${offset}&limit=${limit}`
           );
           if (!response.ok) {
             throw new Error("Unable to load playlist tracks.");
@@ -404,7 +404,7 @@ export default function DuplicatesPage() {
       setScanError(
         error instanceof Error
           ? error.message
-          : "Failed to scan for duplicates.",
+          : "Failed to scan for duplicates."
       );
       setScanProgress(null);
     } finally {
@@ -446,7 +446,7 @@ export default function DuplicatesPage() {
         ([uri, positions]) => ({
           uri,
           positions: Array.from(positions).sort((a, b) => a - b),
-        }),
+        })
       ),
       removedTrackUris: Array.from(removedUris),
     };
@@ -454,7 +454,7 @@ export default function DuplicatesPage() {
 
   const applyResolution = async () => {
     const invalidGroups = duplicateGroups.filter((group) =>
-      group.items.every((item) => selection[item.key]),
+      group.items.every((item) => selection[item.key])
     );
     if (invalidGroups.length > 0) {
       setExecuteState({
@@ -957,7 +957,7 @@ export default function DuplicatesPage() {
                                           "Playlist"}
                                       : {failure.message}
                                     </li>
-                                  ),
+                                  )
                                 )}
                               </ul>
                             </div>

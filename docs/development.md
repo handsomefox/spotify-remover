@@ -1,6 +1,6 @@
 # Run the app locally
 
-You need Bun, a Spotify app of your own, and OpenSSL to generate a session secret.
+You need Node 20.9 or later, a Spotify app of your own, and OpenSSL to generate a session secret. npm ships with Node, so you do not need a separate package manager.
 
 ## Register a Spotify app
 
@@ -32,13 +32,13 @@ Git ignores `.env*`, so `.env.local` stays out of commits.
 1. Install the dependencies from the repository root:
 
    ```sh
-   bun install --frozen-lockfile
+   npm ci
    ```
 
 2. Start the server:
 
    ```sh
-   bun run dev
+   npm run dev
    ```
 
 3. Open `http://127.0.0.1:3000`, not `http://localhost:3000`. The browser treats the two spellings as separate hosts, so starting on `localhost` leaves your session cookies there while the callback lands you on `127.0.0.1`, and sign-in fails.
@@ -49,19 +49,19 @@ Git ignores `.env*`, so `.env.local` stays out of commits.
 Run all three after a set of edits:
 
 ```sh
-bun run format
-bun run lint
-bun run build
+npm run format
+npm run lint
+npm run build
 ```
 
-`bun run format` rewrites files in place, so run it before you stage anything.
+`npm run format` rewrites files in place, so run it before you stage anything.
 
 ## Serve the production build
 
-After `bun run build` succeeds:
+After `npm run build` succeeds:
 
 ```sh
-bun run start
+npm run start
 ```
 
 The production server also listens on `http://127.0.0.1:3000`.

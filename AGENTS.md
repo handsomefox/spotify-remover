@@ -9,17 +9,17 @@ The [repository reference](docs/reference.md) maps the source directories, API r
 - Fetch from the client with `fetchJson` in `lib/api.ts` and pass the Zod schema from the feature's `schemas.ts`. It parses the response and turns an error payload into a thrown `Error`.
 - Import through the `@/*` alias, not relative paths that climb out of a directory.
 - Style with Tailwind utility classes in JSX. Global styles and theme variables live in `app/globals.css`.
-- Prettier owns formatting. Run `bun run format` instead of matching the existing style by hand.
+- Prettier owns formatting. Run `npm run format` instead of matching the existing style by hand.
 
 To add a shadcn component, name it in place of `button`:
 
 ```sh
-bunx --bun shadcn@latest add button --yes
+npx shadcn@latest add button --yes
 ```
 
 ## Check your changes
 
-Run `bun run format`, `bun run lint`, and `bun run build` after a set of edits. The [local development guide](docs/development.md#check-your-changes) covers what each one does.
+Run `npm run format`, `npm run lint`, and `npm run build` after a set of edits. The [local development guide](docs/development.md#check-your-changes) covers what each one does.
 
 The repository has no test runner. If you add tests, put each `*.test.ts` or `*.test.tsx` file next to the code it tests, and add the `test` script to `package.json`.
 

@@ -50,11 +50,11 @@ The `jwt` callback refreshes the access token 60 seconds before `expiresAt`. A f
 
 `eslint.config.mjs` composes `eslint-config-next/core-web-vitals` and `eslint-config-next/typescript`, then calls `globalIgnores` with the four paths that `eslint-config-next` ignores by default. That call replaces the default ignore list rather than extending it, so anything you want ignored has to be listed there.
 
-`tsconfig.json` runs `strict: true` against `target: ES2017` with `moduleResolution: bundler`, and defines the `@/*` alias. `components.json` pins shadcn to the `new-york` style with the `neutral` base color, RSC and CSS variables on, and lucide icons, so `bunx --bun shadcn@latest add` generates components that match what is already here. `app/globals.css` imports Tailwind and `tw-animate-css`, declares the dark variant as a class, and defines the theme variables the shadcn components read.
+`tsconfig.json` runs `strict: true` against `target: ES2017` with `moduleResolution: bundler`, and defines the `@/*` alias. `components.json` pins shadcn to the `new-york` style with the `neutral` base color, RSC and CSS variables on, and lucide icons, so `npx shadcn@latest add` generates components that match what is already here. `app/globals.css` imports Tailwind and `tw-animate-css`, declares the dark variant as a class, and defines the theme variables the shadcn components read.
 
 `next.config.ts` exports an empty `NextConfig`. `postcss.config.mjs` loads `@tailwindcss/postcss` and nothing else. There is no Prettier config, so `prettier` runs on its defaults, which is where the 2-space indents, double quotes, and semicolons come from.
 
-Dependency versions in `package.json` are exact, with no `^` or `~`, so `bun install --frozen-lockfile` and `bun.lock` decide the tree.
+Dependency versions in `package.json` are exact, with no `^` or `~`, so `npm ci` and `package-lock.json` decide the tree. `engines` requires Node 20.9 or later, the minimum Next 16 declares.
 
 ## Commands
 

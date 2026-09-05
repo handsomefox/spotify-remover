@@ -1,16 +1,14 @@
 # Repository reference
 
-## Source layout
+## Where a page lives
 
-`app/` is the App Router tree: the root layout, the providers, `globals.css`, the route handlers under `app/api/`, and three pages that do nothing but render a feature component.
+Each route under `app/` renders one feature component and nothing else:
 
 - `/` renders `features/cleanup/CleanupPage.tsx`
 - `/duplicates` renders `features/duplicates/DuplicatesPage.tsx`
 - `/archives` renders `features/archives/ArchivesPage.tsx`
 
-A feature directory owns one page and everything only that page uses: `components/` for its UI, `schemas.ts` for the Zod schemas its responses parse against, and `types.ts`. Cleanup and duplicates also have `logic/`, which holds the pure functions that group tracks and set the selection defaults. Archives has no `logic/`, because the page only lists playlists and deletes them.
-
-Shared code sits in `lib/` and `components/`. `lib/` holds the Spotify client in `spotify.ts`, the NextAuth options in `auth.ts`, the `fetchJson` wrapper in `api.ts`, and `mapWithConcurrency` in `async.ts`. `components/layout/` holds the shell, header, and nav that every page renders, and `components/ui/` holds shadcn components, so far only `sonner.tsx`.
+A feature directory owns its page and everything only that page uses, including the Zod schemas in `schemas.ts` and, where the page has real selection rules, the pure functions in `logic/`. Code that two features need moves to `lib/` or `components/`, not into the other feature.
 
 The `@/*` alias resolves from the repository root, so `@/lib/utils` is `lib/utils.ts`.
 
@@ -46,16 +44,10 @@ The `jwt` callback refreshes the access token 60 seconds before `expiresAt`. A f
 
 `refreshAccessToken` checks `SPOTIFY_ID`, `SPOTIFY_SECRET`, and the stored refresh token before it calls Spotify, and returns `RefreshAccessTokenError` when any of the three is missing. A missing secret therefore looks like an expired session rather than a configuration error. The [local development guide](development.md) lists all four variables and their local values.
 
-## Configuration
+## Two configuration traps
 
-`eslint.config.mjs` composes `eslint-config-next/core-web-vitals` and `eslint-config-next/typescript`, then calls `globalIgnores` with the four paths that `eslint-config-next` ignores by default. That call replaces the default ignore list rather than extending it, so anything you want ignored has to be listed there.
+`eslint.config.mjs` calls `globalIgnores` with the four paths that `eslint-config-next` ignores by default. That call replaces the default ignore list rather than extending it, so a path you want ignored has to be listed there or it gets linted.
 
-`tsconfig.json` runs `strict: true` against `target: ES2017` with `moduleResolution: bundler`, and defines the `@/*` alias. `components.json` pins shadcn to the `new-york` style with the `neutral` base color, RSC and CSS variables on, and lucide icons, so `npx shadcn@latest add` generates components that match what is already here. `app/globals.css` imports Tailwind and `tw-animate-css`, declares the dark variant as a class, and defines the theme variables the shadcn components read.
+There is no Prettier config, so `prettier` runs on its defaults. That is where the two-space indents, double quotes, and semicolons come from, and it means adding a config file reformats the whole repository in one commit.
 
-`next.config.ts` exports an empty `NextConfig`. `postcss.config.mjs` loads `@tailwindcss/postcss` and nothing else. There is no Prettier config, so `prettier` runs on its defaults, which is where the 2-space indents, double quotes, and semicolons come from.
-
-Dependency versions in `package.json` are exact, with no `^` or `~`, so `npm ci` and `package-lock.json` decide the tree. `engines` requires Node 20.9 or later, the minimum Next 16 declares.
-
-## Commands
-
-`package.json` defines `dev`, `build`, `start`, `lint`, and `format`. `dev` and `start` serve on port 3000, and `build` writes the production build. `lint` is bare `eslint`, which picks up the flat config. `format` is `prettier --write .`, which rewrites files in place, so run it before you stage. There is no test runner and no `test` script.
+Dependency versions in `package.json` are exact, with no `^` or `~`, so `package-lock.json` and `npm ci` decide the tree. `components.json` pins shadcn to the `new-york` style with the `neutral` base color, so `npx shadcn@latest add` generates components that match what is already here.

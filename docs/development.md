@@ -1,6 +1,6 @@
 # Run the app locally
 
-You need Node 20.9 or later, a Spotify app of your own, and OpenSSL to generate a session secret. npm ships with Node, so you do not need a separate package manager.
+You need Node 24, a Spotify app of your own, and OpenSSL to generate a session secret. npm ships with Node, so you do not need a separate package manager.
 
 ## Register a Spotify app
 

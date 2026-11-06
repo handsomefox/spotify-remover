@@ -1,0 +1,10 @@
+# Supply-chain policy for this project, so it also holds where the global pnpm
+# config does not exist. See https://pnpm.io/supply-chain-security.
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 43200
+
+# unrs-resolver's postinstall only fetches a native binding that is already
+# installed through optionalDependencies.
+allowBuilds:
+  unrs-resolver: false

@@ -1,6 +1,6 @@
 # Run the app locally
 
-You need Node 24, a Spotify app of your own, and OpenSSL to generate a session secret. npm ships with Node, so you do not need a separate package manager.
+You need Node 24, pnpm 12, a Spotify app of your own, and OpenSSL to generate a session secret.
 
 ## Register a Spotify app
 
@@ -32,13 +32,13 @@ Git ignores `.env*`, so `.env.local` stays out of commits.
 1. Install the dependencies from the repository root:
 
    ```sh
-   npm ci
+   pnpm install --frozen-lockfile
    ```
 
 2. Start the server:
 
    ```sh
-   npm run dev
+   pnpm run dev
    ```
 
 3. Open `http://127.0.0.1:3000`, not `http://localhost:3000`. The browser treats the two spellings as separate hosts, so starting on `localhost` leaves your session cookies there while the callback lands you on `127.0.0.1`, and sign-in fails.
@@ -49,19 +49,19 @@ Git ignores `.env*`, so `.env.local` stays out of commits.
 Run all three after a set of edits:
 
 ```sh
-npm run format
-npm run lint
-npm run build
+pnpm run format
+pnpm run lint
+pnpm run build
 ```
 
-`npm run format` rewrites files in place, so run it before you stage anything.
+`pnpm run format` rewrites files in place, so run it before you stage anything.
 
 ## Serve the production build
 
-After `npm run build` succeeds:
+After `pnpm run build` succeeds:
 
 ```sh
-npm run start
+pnpm run start
 ```
 
 The production server also listens on `http://127.0.0.1:3000`.

@@ -50,4 +50,4 @@ The `jwt` callback refreshes the access token 60 seconds before `expiresAt`. A f
 
 There is no Prettier config, so `prettier` runs on its defaults. That is where the two-space indents, double quotes, and semicolons come from, and it means adding a config file reformats the whole repository in one commit.
 
-Dependency versions in `package.json` are exact, with no `^` or `~`, so `package-lock.json` and `npm ci` decide the tree. `components.json` pins shadcn to the `new-york` style with the `neutral` base color, so `npx shadcn@latest add` generates components that match what is already here.
+Dependency versions in `package.json` are exact, with no `^` or `~`, so `pnpm-lock.yaml` and `pnpm install --frozen-lockfile` decide the tree. `components.json` pins shadcn to the `new-york` style with the `neutral` base color, so `npx shadcn@latest add` generates components that match what is already here.
